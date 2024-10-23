@@ -1,10 +1,13 @@
+using System.Net;
+using DnsQuery;
 using static DnsQuery.Helpers;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.UseKestrel(o => o.ListenAnyIP(443, l => 
+builder.WebHost.UseKestrel(o => o.Listen(IPAddress.IPv6Any, 443, l =>
     l.UseHttps(
         builder.Configuration.GetValue<string>("CertificatePath")!,
         builder.Configuration.GetValue<string>("CertificatePassword"))));
+
 var app = builder.Build();
 
 app.MapMethods("/dns-query", new[] { "GET", "POST" }, async context =>
@@ -36,7 +39,7 @@ app.MapMethods("/dns-query", new[] { "GET", "POST" }, async context =>
     else if (HttpMethods.IsPost(context.Request.Method))
     {
         if (context.Request.ContentType is { } contentType
-            && contentType.Equals("application/dns-message", StringComparison.OrdinalIgnoreCase))
+            && !contentType.Equals("application/dns-message", StringComparison.OrdinalIgnoreCase))
         {
             context.Response.StatusCode = StatusCodes.Status415UnsupportedMediaType;
             await context.Response.WriteAsync("Type de contenu non supporté.");
@@ -68,7 +71,17 @@ app.MapMethods("/dns-query", new[] { "GET", "POST" }, async context =>
     }
 
     context.Response.ContentType = "application/dns-message";
+    context.Response.ContentLength = dnsResponse.Length;
     await context.Response.Body.WriteAsync(dnsResponse, 0, dnsResponse.Length);
+    await context.Response.CompleteAsync();
 });
+var dnsOverTlsServer = new DnsOverTlsServer(IPAddress.Any, 853,
+    builder.Configuration.GetValue<string>("CertificatePath")!,
+    builder.Configuration.GetValue<string>("CertificatePassword")!,
+    builder.Configuration.GetValue<string>("BaseDns")!
+);
 
-app.Run();
+Task.WhenAll(
+    app.RunAsync(),
+    dnsOverTlsServer.StartAsync()
+).Wait();
