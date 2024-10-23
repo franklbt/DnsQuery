@@ -1,7 +1,7 @@
 using static DnsQuery.Helpers;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.UseUrls("http://localhost:80");
+builder.WebHost.UseKestrel(o => o.ListenAnyIP(80));
 var app = builder.Build();
 
 app.MapMethods("/dns-query", new[] { "GET", "POST" }, async context =>
