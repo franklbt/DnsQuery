@@ -2,7 +2,9 @@ using static DnsQuery.Helpers;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseKestrel(o => o.ListenAnyIP(443, l => 
-    l.UseHttps()));
+    l.UseHttps(
+        builder.Configuration.GetValue<string>("CertificatePath")!,
+        builder.Configuration.GetValue<string>("CertificatePassword"))));
 var app = builder.Build();
 
 app.MapMethods("/dns-query", new[] { "GET", "POST" }, async context =>
