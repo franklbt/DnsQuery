@@ -54,7 +54,7 @@ app.MapMethods("/dns-query", new[] { "GET", "POST" }, async context =>
 
     try
     {
-        var baseDnsServer = app.Configuration.GetValue<string>("BaseDns");
+        var baseDnsServer = app.Configuration.GetValue<string>("BaseDns")!;
         dnsResponse = await ResolveDnsAsync(dnsRequest, baseDnsServer);
     }
     catch (Exception ex)
