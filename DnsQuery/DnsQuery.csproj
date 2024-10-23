@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <PublishSingleFile>true</PublishSingleFile>
+        <PublishTrimmed>true</PublishTrimmed>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <PublishReadyToRun>true</PublishReadyToRun>
+    </PropertyGroup>
+
+</Project>
