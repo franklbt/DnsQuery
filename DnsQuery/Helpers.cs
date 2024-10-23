@@ -52,9 +52,18 @@ public static class Helpers
     {
         using var udpClient = new UdpClient();
         var dnsServerEndpoint = new IPEndPoint(IPAddress.Parse(customDns), 53);
-        await udpClient.SendAsync(dnsRequest, dnsRequest.Length, dnsServerEndpoint);
-        var udpReceiveResult = await udpClient.ReceiveAsync();
-        return udpReceiveResult.Buffer;
+        udpClient.Client.ReceiveTimeout = 5000; // 5000 millisecondes
+
+        try
+        {
+            await udpClient.SendAsync(dnsRequest, dnsRequest.Length, dnsServerEndpoint);
+            var udpReceiveResult = await udpClient.ReceiveAsync();
+            return udpReceiveResult.Buffer;
+        }
+        catch (SocketException ex) when (ex.SocketErrorCode == SocketError.TimedOut)
+        {
+            throw new Exception("Le serveur DNS n'a pas répondu à temps.");
+        }
     }
 
 }

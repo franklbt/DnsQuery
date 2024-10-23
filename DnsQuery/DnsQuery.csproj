@@ -3,10 +3,11 @@
     <PropertyGroup>
         <TargetFramework>net9.0</TargetFramework>
         <Nullable>enable</Nullable>
+        <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
         <PublishSingleFile>true</PublishSingleFile>
-        <PublishTrimmed>true</PublishTrimmed>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <PublishReadyToRun>true</PublishReadyToRun>
+        <SelfContained>true</SelfContained>
+        <PublishTrimmed>false</PublishTrimmed>
+        <ImplicitUsings>enable</ImplicitUsings> 
     </PropertyGroup>
 
 </Project>
