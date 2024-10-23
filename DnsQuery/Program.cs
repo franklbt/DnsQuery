@@ -75,6 +75,7 @@ app.MapMethods("/dns-query", new[] { "GET", "POST" }, async context =>
     await context.Response.Body.WriteAsync(dnsResponse, 0, dnsResponse.Length);
     await context.Response.CompleteAsync();
 });
+
 var dnsOverTlsServer = new DnsOverTlsServer(IPAddress.Any, 853,
     builder.Configuration.GetValue<string>("CertificatePath")!,
     builder.Configuration.GetValue<string>("CertificatePassword")!,
