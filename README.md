@@ -41,4 +41,6 @@ After that, we need to edit `appsettings.json` file with the following values:
 }
 ```
 
-And then launch `./DnsQuery`
+And then launch `./DnsQuery` inside the folder.
+
+You can automate the execution of this service by automating the launch via `systemd` for example.
