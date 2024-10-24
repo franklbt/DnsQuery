@@ -51,10 +51,11 @@ public class DnsOverHttpsServer
                         && !contentType.Equals("application/dns-message", StringComparison.OrdinalIgnoreCase))
                         return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
 
-                    if (context.Request.Body.Length == 0)
+                    var length = context.Request.Headers.ContentLength;
+                    if (length is null || length == 0)
                         return Results.BadRequest("Corps de la requête vide.");
 
-                    using var ms = new MemoryStream((int)context.Request.Body.Length);
+                    using var ms = new MemoryStream((int)length);
                     await context.Request.Body.CopyToAsync(ms);
                     dnsRequest = ms.GetBuffer().AsMemory(0, (int)ms.Length);
                 }
