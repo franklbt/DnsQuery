@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.Buffers;
+using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
@@ -6,15 +7,13 @@ using static DnsQuery.Helpers;
 
 namespace DnsQuery;
 
-public class DnsOverTlsServer(IConfiguration configuration)
+public class DnsOverTlsServer(IConfiguration configuration, IPEndPoint baseDnsServer)
 {
     private readonly TcpListener _listener = new(IPAddress.Any, 853);
 
     private readonly X509Certificate2 _serverCertificate = X509CertificateLoader.LoadPkcs12FromFile(
         configuration.GetValue<string>("CertificatePath")!,
         configuration.GetValue<string>("CertificatePassword")!);
-    
-    private readonly string _baseDnsServer = configuration.GetValue<string>("BaseDnsServer")!;
 
 
     public async Task StartAsync()
@@ -51,8 +50,9 @@ public class DnsOverTlsServer(IConfiguration configuration)
     {
         while (true)
         {
-            var lengthBuffer = new byte[2];
-            var bytesRead = await sslStream.ReadAsync(lengthBuffer, 0, 2);
+            using var lengthOwner = MemoryPool<byte>.Shared.Rent(2);
+            var lengthBuffer = lengthOwner.Memory.Slice(0, 2);
+            var bytesRead = await sslStream.ReadAsync(lengthBuffer);
             if (bytesRead == 0)
             {
                 break;
@@ -64,24 +64,26 @@ public class DnsOverTlsServer(IConfiguration configuration)
                 break;
             }
 
-            var messageLength = (lengthBuffer[0] << 8) | lengthBuffer[1];
+            var messageLength = (lengthBuffer.Span[0] << 8) | lengthBuffer.Span[1];
 
-            var messageBuffer = new byte[messageLength];
-            bytesRead = await sslStream.ReadAsync(messageBuffer, 0, messageLength);
+            using var messageOwner = MemoryPool<byte>.Shared.Rent(messageLength);
+            var messageBuffer = messageOwner.Memory.Slice(0, messageLength);
+            bytesRead = await sslStream.ReadAsync(messageBuffer);
             if (bytesRead != messageLength)
             {
                 Console.WriteLine("Message DNS incomplet reçu.");
                 break;
             }
 
-            var responseMessage = await ResolveDnsAsync(messageBuffer, _baseDnsServer);
+            var responseMessage = await ResolveDnsAsync(messageBuffer, baseDnsServer);
 
-            var responseLengthBuffer = new byte[2];
-            responseLengthBuffer[0] = (byte)(responseMessage.Length >> 8);
-            responseLengthBuffer[1] = (byte)(responseMessage.Length & 0xFF);
+            using var responseLengthOwner = MemoryPool<byte>.Shared.Rent(2);
+            var responseLengthBuffer = responseLengthOwner.Memory.Slice(0, 2);
+            responseLengthBuffer.Span[0] = (byte)(responseMessage.Length >> 8);
+            responseLengthBuffer.Span[1] = (byte)(responseMessage.Length & 0xFF);
 
-            await sslStream.WriteAsync(responseLengthBuffer, 0, 2);
-            await sslStream.WriteAsync(responseMessage, 0, responseMessage.Length);
+            await sslStream.WriteAsync(responseLengthBuffer);
+            await sslStream.WriteAsync(responseMessage);
         }
     }
 }

@@ -8,6 +8,7 @@ public class DnsOverHttpsServer
 {
     private readonly WebApplication _app;
     public readonly IConfiguration Configuration;
+    public readonly IPEndPoint BaseDnsServer;
 
     public DnsOverHttpsServer()
     {
@@ -20,12 +21,13 @@ public class DnsOverHttpsServer
 
         _app = builder.Build();
         Configuration = _app.Configuration;
-        var baseDnsServer = _app.Configuration.GetValue<string>("BaseDnsServer")!;
+        BaseDnsServer = new IPEndPoint(IPAddress.Parse(
+            _app.Configuration.GetValue<string>("BaseDnsServer")!), 53);
 
         _app.MapMethods("/dns-query", new[] { "GET", "POST" },
             async (HttpContext context, ILogger<DnsOverHttpsServer> logger) =>
             {
-                byte[] dnsRequest;
+                Memory<byte> dnsRequest;
 
                 if (HttpMethods.IsGet(context.Request.Method))
                 {
@@ -35,7 +37,7 @@ public class DnsOverHttpsServer
                     try
                     {
                         dnsRequest = FromBase64Url(dnsParam[0]!);
-                        if(dnsRequest.Length == 0)
+                        if (dnsRequest.Length == 0)
                             return Results.BadRequest("Paramètre 'dns' vide.");
                     }
                     catch (FormatException)
@@ -49,23 +51,23 @@ public class DnsOverHttpsServer
                         && !contentType.Equals("application/dns-message", StringComparison.OrdinalIgnoreCase))
                         return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
 
-                    using var ms = new MemoryStream();
-                    await context.Request.Body.CopyToAsync(ms);
-                    if(ms.Length == 0)
+                    if (context.Request.Body.Length == 0)
                         return Results.BadRequest("Corps de la requête vide.");
-                    
-                    dnsRequest = ms.ToArray();
+
+                    using var ms = new MemoryStream((int)context.Request.Body.Length);
+                    await context.Request.Body.CopyToAsync(ms);
+                    dnsRequest = ms.GetBuffer().AsMemory(0, (int)ms.Length);
                 }
                 else
                 {
                     return Results.StatusCode(StatusCodes.Status405MethodNotAllowed);
                 }
 
-                byte[] dnsResponse;
+                Memory<byte> dnsResponse;
 
                 try
                 {
-                    dnsResponse = await ResolveDnsAsync(dnsRequest, baseDnsServer);
+                    dnsResponse = await ResolveDnsAsync(dnsRequest, BaseDnsServer);
                 }
                 catch (Exception ex)
                 {

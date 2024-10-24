@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.Buffers;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
@@ -22,7 +23,7 @@ public static class Helpers
             writer.Write((ushort)0);
             writer.Write((ushort)0);
 
-            string[] labels = domainName.Split('.');
+            var labels = domainName.Split('.');
             foreach (var label in labels)
             {
                 var length = (byte)label.Length;
@@ -37,41 +38,50 @@ public static class Helpers
         return dnsQuery.ToArray();
     }
 
-    public static byte[] FromBase64Url(string base64Url)
+    public static Memory<byte> FromBase64Url(string base64Url)
     {
         if(base64Url.Length == 0)
-            return [];
+            return Memory<byte>.Empty;
         
-        Span<char> paddedSpan = stackalloc char[base64Url.Length + 2];
+        var paddingNeeded = (4 - base64Url.Length % 4) % 4;
+        var totalLength = base64Url.Length + paddingNeeded;   
+        using var paddedSpanOwner = MemoryPool<char>.Shared.Rent(totalLength);
+        var paddedSpan = paddedSpanOwner.Memory[..totalLength].Span;
+        
         base64Url.AsSpan().CopyTo(paddedSpan);
         for (var i = 0; i < paddedSpan.Length; i++)
         {
-            if (paddedSpan[i] == '-') paddedSpan[i] = '+';
-            else if (paddedSpan[i] == '_') paddedSpan[i] = '/';
+            if (paddedSpan[i] == '-') 
+                paddedSpan[i] = '+';
+            else if (paddedSpan[i] == '_') 
+                paddedSpan[i] = '/';
         }
-        var padding = paddedSpan.Length % 4;
-        if (padding > 0)
+        for (var i = base64Url.Length; i < totalLength; i++)
         {
-            paddedSpan = paddedSpan.Slice(0, paddedSpan.Length + (4 - padding));
-            for (var i = paddedSpan.Length - (4 - padding); i < paddedSpan.Length; i++)
-            {
-                paddedSpan[i] = '=';
-            }
+            paddedSpan[i] = '=';
         }
-        return Convert.FromBase64String(paddedSpan.ToString());
+        
+        var expectedDecodedLength = paddedSpan.Length * 3 / 4;
+        using var decodedBufferOwner = MemoryPool<byte>.Shared.Rent(expectedDecodedLength);
+        var decodedBufferMemory = decodedBufferOwner.Memory[..expectedDecodedLength];
+        var decodedBuffer = decodedBufferMemory.Span;
+
+        if (Convert.TryFromBase64Chars(paddedSpan, decodedBuffer, out var _))
+            return decodedBufferMemory;
+        
+        return Memory<byte>.Empty;
     }
 
-    public static async Task<byte[]> ResolveDnsAsync(byte[] dnsRequest, string customDns)
+    public static async Task<Memory<byte>> ResolveDnsAsync(ReadOnlyMemory<byte> dnsRequest, IPEndPoint dnsServerEndpoint)
     {
         var udpClient = UdpClientPool.Rent();
 
         try
-        {
-            var dnsServerEndpoint = new IPEndPoint(IPAddress.Parse(customDns), 53);
+        { 
             udpClient.Client.ReceiveTimeout = 5000;
-            await udpClient.SendAsync(dnsRequest, dnsRequest.Length, dnsServerEndpoint);
+            await udpClient.SendAsync(dnsRequest, dnsServerEndpoint);
             var udpReceiveResult = await udpClient.ReceiveAsync();
-            return udpReceiveResult.Buffer;
+            return udpReceiveResult.Buffer.AsMemory();
         }
         catch (SocketException ex) when (ex.SocketErrorCode == SocketError.TimedOut)
         {
