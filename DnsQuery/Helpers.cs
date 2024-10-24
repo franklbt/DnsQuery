@@ -10,7 +10,7 @@ public static class Helpers
     public static byte[] CreateDnsQuery(string domainName)
     {
         var random = new Random();
-        ushort transactionId = (ushort)random.Next(0, ushort.MaxValue);
+        var transactionId = (ushort)random.Next(0, ushort.MaxValue);
 
         var dnsQuery = new MemoryStream();
         using (var writer = new BinaryWriter(dnsQuery))
@@ -23,9 +23,9 @@ public static class Helpers
             writer.Write((ushort)0);
 
             string[] labels = domainName.Split('.');
-            foreach (string label in labels)
+            foreach (var label in labels)
             {
-                byte length = (byte)label.Length;
+                var length = (byte)label.Length;
                 writer.Write(length);
                 writer.Write(Encoding.ASCII.GetBytes(label));
             }
@@ -39,13 +39,26 @@ public static class Helpers
 
     public static byte[] FromBase64Url(string base64Url)
     {
-        string padded = base64Url.Replace('-', '+').Replace('_', '/');
-        switch (padded.Length % 4)
+        if(base64Url.Length == 0)
+            return [];
+        
+        Span<char> paddedSpan = stackalloc char[base64Url.Length + 2];
+        base64Url.AsSpan().CopyTo(paddedSpan);
+        for (var i = 0; i < paddedSpan.Length; i++)
         {
-            case 2: padded += "=="; break;
-            case 3: padded += "="; break;
+            if (paddedSpan[i] == '-') paddedSpan[i] = '+';
+            else if (paddedSpan[i] == '_') paddedSpan[i] = '/';
         }
-        return Convert.FromBase64String(padded);
+        var padding = paddedSpan.Length % 4;
+        if (padding > 0)
+        {
+            paddedSpan = paddedSpan.Slice(0, paddedSpan.Length + (4 - padding));
+            for (var i = paddedSpan.Length - (4 - padding); i < paddedSpan.Length; i++)
+            {
+                paddedSpan[i] = '=';
+            }
+        }
+        return Convert.FromBase64String(paddedSpan.ToString());
     }
 
     public static async Task<byte[]> ResolveDnsAsync(byte[] dnsRequest, string customDns)

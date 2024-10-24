@@ -29,14 +29,14 @@ public class DnsOverHttpsServer
 
                 if (HttpMethods.IsGet(context.Request.Method))
                 {
-                    if (!context.Request.Query.ContainsKey("dns"))
+                    if (!context.Request.Query.TryGetValue("dns", out var dnsParam))
                         return Results.BadRequest("Paramètre 'dns' manquant.");
-
-                    var dnsParam = context.Request.Query["dns"].ToString()!;
 
                     try
                     {
-                        dnsRequest = FromBase64Url(dnsParam);
+                        dnsRequest = FromBase64Url(dnsParam[0]!);
+                        if(dnsRequest.Length == 0)
+                            return Results.BadRequest("Paramètre 'dns' vide.");
                     }
                     catch (FormatException)
                     {

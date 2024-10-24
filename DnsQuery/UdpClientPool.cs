@@ -12,7 +12,7 @@ public class UdpClientPool : IDisposable
     public UdpClientPool(int initialCount = 15)
     {
         _clients = new ConcurrentBag<UdpClient>();
-        for (int i = 0; i < initialCount; i++)
+        for (var i = 0; i < initialCount; i++)
         {
             _clients.Add(new());
         }
@@ -23,7 +23,7 @@ public class UdpClientPool : IDisposable
         if (_disposed)
             throw new ObjectDisposedException(nameof(UdpClientPool));
 
-        return _clients.TryTake(out UdpClient client) 
+        return _clients.TryTake(out var client) 
             ? client 
             : new();
     }
@@ -46,7 +46,7 @@ public class UdpClientPool : IDisposable
         
         _disposed = true;
         
-        while (_clients.TryTake(out UdpClient client)) 
+        while (_clients.TryTake(out var client)) 
             client.Dispose();
     }
 }

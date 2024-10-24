@@ -10,7 +10,7 @@ public class DnsOverTlsServer(IConfiguration configuration)
 {
     private readonly TcpListener _listener = new(IPAddress.Any, 853);
 
-    private readonly X509Certificate2 _serverCertificate = new(
+    private readonly X509Certificate2 _serverCertificate = X509CertificateLoader.LoadPkcs12FromFile(
         configuration.GetValue<string>("CertificatePath")!,
         configuration.GetValue<string>("CertificatePassword")!);
     
@@ -51,8 +51,8 @@ public class DnsOverTlsServer(IConfiguration configuration)
     {
         while (true)
         {
-            byte[] lengthBuffer = new byte[2];
-            int bytesRead = await sslStream.ReadAsync(lengthBuffer, 0, 2);
+            var lengthBuffer = new byte[2];
+            var bytesRead = await sslStream.ReadAsync(lengthBuffer, 0, 2);
             if (bytesRead == 0)
             {
                 break;
@@ -64,9 +64,9 @@ public class DnsOverTlsServer(IConfiguration configuration)
                 break;
             }
 
-            int messageLength = (lengthBuffer[0] << 8) | lengthBuffer[1];
+            var messageLength = (lengthBuffer[0] << 8) | lengthBuffer[1];
 
-            byte[] messageBuffer = new byte[messageLength];
+            var messageBuffer = new byte[messageLength];
             bytesRead = await sslStream.ReadAsync(messageBuffer, 0, messageLength);
             if (bytesRead != messageLength)
             {
@@ -74,9 +74,9 @@ public class DnsOverTlsServer(IConfiguration configuration)
                 break;
             }
 
-            byte[] responseMessage = await ResolveDnsAsync(messageBuffer, _baseDnsServer);
+            var responseMessage = await ResolveDnsAsync(messageBuffer, _baseDnsServer);
 
-            byte[] responseLengthBuffer = new byte[2];
+            var responseLengthBuffer = new byte[2];
             responseLengthBuffer[0] = (byte)(responseMessage.Length >> 8);
             responseLengthBuffer[1] = (byte)(responseMessage.Length & 0xFF);
 
