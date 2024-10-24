@@ -6,7 +6,7 @@ If this service is accessible from the web, it can become a private dns availabl
 
 ## Dependencies
 
-- .NET 8 SDK: [Download](https://dotnet.microsoft.com/fr-fr/download/dotnet/8.0)
+- .NET 9 SDK: [Download](https://dotnet.microsoft.com/fr-fr/download/dotnet/9.0)
 - A base Pi-Hole DNS Server
 
 ## Build
