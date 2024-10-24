@@ -7,12 +7,14 @@ namespace DnsQuery;
 public class DnsOverHttpsServer
 {
     private readonly WebApplication _app;
+    private readonly string _baseDnsServer;
     public readonly IConfiguration Configuration;
 
     public DnsOverHttpsServer()
     {
         var builder = WebApplication.CreateBuilder([]);
         Configuration = builder.Configuration;
+        _baseDnsServer = Configuration.GetValue<string>("BaseDnsServer")!;
         builder.WebHost.UseKestrel(o => o.Listen(IPAddress.IPv6Any, 443, l =>
             l.UseHttps(
                 builder.Configuration.GetValue<string>("CertificatePath")!,
@@ -64,8 +66,7 @@ public class DnsOverHttpsServer
 
                 try
                 {
-                    var baseDnsServer = _app.Configuration.GetValue<string>("BaseDns")!;
-                    dnsResponse = await ResolveDnsAsync(dnsRequest, baseDnsServer);
+                    dnsResponse = await ResolveDnsAsync(dnsRequest, _baseDnsServer);
                 }
                 catch (Exception ex)
                 {
