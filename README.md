@@ -9,7 +9,7 @@ Need 443 and 853 ports to be free on Raspberry Pi (RPi).
 ## Dependencies
 
 - .NET 9 SDK: [Download](https://dotnet.microsoft.com/fr-fr/download/dotnet/9.0)
-- A RPi Pi-Hole DNS Server
+- A RPi with Pi-Hole installed
 
 ## Build
 
@@ -37,7 +37,7 @@ After that, we need to edit `appsettings.json` file with the following values:
 ```json
 {
   ...
-  "BaseDnsServer": "<pihole_address>",
+  "BaseDnsServer": "<pihole_ip_address>",
   "CertificatePath": "<certificate_path>",
   "CertificatePassword": "<certificate_password>"
 }
