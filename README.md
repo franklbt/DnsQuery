@@ -43,6 +43,10 @@ After that, we need to edit `appsettings.json` file with the following values:
 
 And then launch `./DnsQuery` inside the folder.
 
-You can test that everything work by running this request: https://<your_domain>/dns-query?dns=Wi8BAAABAAAAAAAABmdvb2dsZQNjb20AAAEAAQ 
+You can test that everything work by running this request (ask for google.com DNS record): 
+
+```
+https://<your_domain>/dns-query?dns=Wi8BAAABAAAAAAAABmdvb2dsZQNjb20AAAEAAQ 
+```
 
 You can automate the execution of this service by automating the launch via `systemd` for example.
