@@ -35,7 +35,7 @@ After that, we need to edit `appsettings.json` file with the following values:
 ```json
 {
   ...
-  "BaseDns": "<pihole_address>",
+  "BaseDnsServer": "<pihole_address>",
   "CertificatePath": "<certificate_path>",
   "CertificatePassword": "<certificate_password>"
 }
