@@ -6,7 +6,7 @@ namespace DnsQuery;
 
 public static class Helpers
 {
-    
+    public static UdpClientPool UdpClientPool { get; } = new();
     public static byte[] CreateDnsQuery(string domainName)
     {
         var random = new Random();
@@ -50,19 +50,23 @@ public static class Helpers
 
     public static async Task<byte[]> ResolveDnsAsync(byte[] dnsRequest, string customDns)
     {
-        using var udpClient = new UdpClient();
-        var dnsServerEndpoint = new IPEndPoint(IPAddress.Parse(customDns), 53);
-        udpClient.Client.ReceiveTimeout = 5000; // 5000 millisecondes
+        var udpClient = UdpClientPool.Rent();
 
         try
         {
+            var dnsServerEndpoint = new IPEndPoint(IPAddress.Parse(customDns), 53);
+            udpClient.Client.ReceiveTimeout = 5000;
             await udpClient.SendAsync(dnsRequest, dnsRequest.Length, dnsServerEndpoint);
             var udpReceiveResult = await udpClient.ReceiveAsync();
             return udpReceiveResult.Buffer;
         }
         catch (SocketException ex) when (ex.SocketErrorCode == SocketError.TimedOut)
         {
-            throw new Exception("Le serveur DNS n'a pas répondu à temps.");
+            throw;
+        }
+        finally
+        {
+            UdpClientPool.Return(udpClient);
         }
     }
 
