@@ -2,7 +2,7 @@
 
 A simple service adding DNS over HTTP (DoS) and DNS over TLS (DoH) capabilities to Pi-Hole.
 
-If this service is accessible from the web, it can become a private dns available for all devices on the go (laptop, phone...)
+If this service is accessible from the web, it can become a private dns available for all devices while on the go (laptop, phone...)
 
 ## Dependencies
 
