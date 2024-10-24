@@ -13,6 +13,8 @@ public class DnsOverTlsServer(IConfiguration configuration)
     private readonly X509Certificate2 _serverCertificate = new(
         configuration.GetValue<string>("CertificatePath")!,
         configuration.GetValue<string>("CertificatePassword")!);
+    
+    private readonly string _baseDnsServer = configuration.GetValue<string>("BaseDnsServer")!;
 
 
     public async Task StartAsync()
@@ -72,8 +74,7 @@ public class DnsOverTlsServer(IConfiguration configuration)
                 break;
             }
 
-            var baseDnsServer = configuration.GetValue<string>("BaseDns")!;
-            byte[] responseMessage = await ResolveDnsAsync(messageBuffer, baseDnsServer);
+            byte[] responseMessage = await ResolveDnsAsync(messageBuffer, _baseDnsServer);
 
             byte[] responseLengthBuffer = new byte[2];
             responseLengthBuffer[0] = (byte)(responseMessage.Length >> 8);
