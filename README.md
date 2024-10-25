@@ -2,7 +2,7 @@
 
 An highly optimized .NET service adding DNS over HTTP (DoS) and DNS over TLS (DoH) capabilities to Pi-Hole.
 
-By letting RPi be accessible from the web, it can become a private dns available for all devices while on the go (laptop, android phone...).
+By letting RPi be accessible from the web, it can become a dns available for all devices while on the go (laptop, android phone...).
 
 Need 443 and 853 ports to be free on Raspberry Pi (RPi).
 
