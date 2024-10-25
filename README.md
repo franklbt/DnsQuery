@@ -2,14 +2,14 @@
 
 An highly optimized .NET service adding DNS over HTTP (DoS) and DNS over TLS (DoH) capabilities to Pi-Hole.
 
-By letting RPi be accessible from the web, it can become a private dns available for all devices while on the go (laptop, android phone...).
+By letting RPi be accessible from the web, it can become a dns available for all devices while on the go (laptop, android phone...).
 
-Need 443 and 853 ports to be free.
+Need 443 and 853 ports to be free on Raspberry Pi (RPi).
 
 ## Dependencies
 
 - .NET 9 SDK: [Download](https://dotnet.microsoft.com/fr-fr/download/dotnet/9.0)
-- A base Pi-Hole DNS Server
+- A RPi with Pi-Hole installed
 
 ## Build
 
@@ -37,7 +37,7 @@ After that, we need to edit `appsettings.json` file with the following values:
 ```json
 {
   ...
-  "BaseDnsServer": "<pihole_address>",
+  "BaseDnsServer": "<pihole_ip_address>",
   "CertificatePath": "<certificate_path>",
   "CertificatePassword": "<certificate_password>"
 }
