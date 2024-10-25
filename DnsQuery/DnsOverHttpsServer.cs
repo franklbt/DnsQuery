@@ -9,6 +9,7 @@ public class DnsOverHttpsServer
     private readonly WebApplication _app;
     public readonly IConfiguration Configuration;
     public readonly IPEndPoint BaseDnsServer;
+    public ILogger Logger { get; }
 
     public DnsOverHttpsServer()
     {
@@ -23,6 +24,7 @@ public class DnsOverHttpsServer
         Configuration = _app.Configuration;
         BaseDnsServer = new IPEndPoint(IPAddress.Parse(
             _app.Configuration.GetValue<string>("BaseDnsServer")!), 53);
+        Logger = _app.Logger;
 
         _app.MapMethods("/dns-query", new[] { "GET", "POST" },
             async (HttpContext context, ILogger<DnsOverHttpsServer> logger) =>
@@ -52,7 +54,7 @@ public class DnsOverHttpsServer
                         return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
 
                     var length = context.Request.Headers.ContentLength;
-                    if (length is null || length == 0)
+                    if (length is null or 0)
                         return Results.BadRequest("Corps de la requête vide.");
 
                     using var ms = new MemoryStream((int)length);

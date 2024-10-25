@@ -7,19 +7,21 @@ using static DnsQuery.Helpers;
 
 namespace DnsQuery;
 
-public class DnsOverTlsServer(IConfiguration configuration, IPEndPoint baseDnsServer)
+public class DnsOverTlsServer(DnsOverHttpsServer server)
 {
     private readonly TcpListener _listener = new(IPAddress.Any, 853);
 
     private readonly X509Certificate2 _serverCertificate = X509CertificateLoader.LoadPkcs12FromFile(
-        configuration.GetValue<string>("CertificatePath")!,
-        configuration.GetValue<string>("CertificatePassword")!);
+        server.Configuration.GetValue<string>("CertificatePath")!,
+        server.Configuration.GetValue<string>("CertificatePassword")!);
+    
+    private readonly ILogger _logger = server.Logger;
 
 
     public async Task StartAsync()
     {
         _listener.Start();
-        Console.WriteLine("Serveur DoT démarré sur le port 853.");
+        _logger.LogInformation("Serveur DoT démarré sur le port 853.");
 
         while (true)
         {
@@ -41,7 +43,7 @@ public class DnsOverTlsServer(IConfiguration configuration, IPEndPoint baseDnsSe
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Erreur lors de la gestion du client : {ex.Message}");
+                _logger.LogError("Erreur lors de la gestion du client : {0}", ex.Message);
             }
         }
     }
@@ -60,7 +62,7 @@ public class DnsOverTlsServer(IConfiguration configuration, IPEndPoint baseDnsSe
 
             if (bytesRead != 2)
             {
-                Console.WriteLine("Préfixe de longueur invalide.");
+                _logger.LogError("Préfixe de longueur invalide.");
                 break;
             }
 
@@ -71,11 +73,11 @@ public class DnsOverTlsServer(IConfiguration configuration, IPEndPoint baseDnsSe
             bytesRead = await sslStream.ReadAsync(messageBuffer);
             if (bytesRead != messageLength)
             {
-                Console.WriteLine("Message DNS incomplet reçu.");
+                _logger.LogError("Message DNS incomplet reçu.");
                 break;
             }
 
-            var responseMessage = await ResolveDnsAsync(messageBuffer, baseDnsServer);
+            var responseMessage = await ResolveDnsAsync(messageBuffer, server.BaseDnsServer);
 
             using var responseLengthOwner = MemoryPool<byte>.Shared.Rent(2);
             var responseLengthBuffer = responseLengthOwner.Memory.Slice(0, 2);
