@@ -80,6 +80,11 @@ public class DnsOverHttpsServer
 
                 return Results.Bytes(dnsResponse, "application/dns-message");
             });
+
+        if (_app.Environment.EnvironmentName != Environments.Development)
+            return;
+
+        _app.MapGet("/dns-query-body", void ([FromQuery] string domain) => Results.File(CreateDnsQuery(domain)));
     }
 
     public async Task StartAsync() => await _app.RunAsync();

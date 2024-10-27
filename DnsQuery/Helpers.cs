@@ -61,7 +61,7 @@ public static class Helpers
             paddedSpan[i] = '=';
         }
         
-        var expectedDecodedLength = paddedSpan.Length * 3 / 4;
+        var expectedDecodedLength = base64Url.Length * 3 / 4;
         using var decodedBufferOwner = MemoryPool<byte>.Shared.Rent(expectedDecodedLength);
         var decodedBufferMemory = decodedBufferOwner.Memory[..expectedDecodedLength];
         var decodedBuffer = decodedBufferMemory.Span;
