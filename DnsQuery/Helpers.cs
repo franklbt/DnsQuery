@@ -1,96 +1,75 @@
-﻿using System.Buffers;
-using System.Net;
-using System.Net.Sockets;
+using System.Buffers;
+using System.Buffers.Binary;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace DnsQuery;
 
 public static class Helpers
 {
-    public static UdpClientPool UdpClientPool { get; } = new();
     public static byte[] CreateDnsQuery(string domainName)
     {
-        var random = new Random();
-        var transactionId = (ushort)random.Next(0, ushort.MaxValue);
+        ArgumentException.ThrowIfNullOrWhiteSpace(domainName);
+        var labels = domainName.TrimEnd('.').Split('.');
+        if (labels.Length == 0 || labels.Any(label => label.Length is 0 or > 63))
+            throw new ArgumentException("The domain name is invalid.", nameof(domainName));
 
-        var dnsQuery = new MemoryStream();
-        using (var writer = new BinaryWriter(dnsQuery))
+        var encodedLength = labels.Sum(label => Encoding.ASCII.GetByteCount(label) + 1);
+        if (encodedLength > 254)
+            throw new ArgumentException("The domain name is too long.", nameof(domainName));
+
+        var query = new byte[DnsMessage.HeaderLength + encodedLength + 5];
+        BinaryPrimitives.WriteUInt16BigEndian(query, (ushort)RandomNumberGenerator.GetInt32(ushort.MaxValue + 1));
+        query[2] = 0x01;
+        query[5] = 0x01;
+        var offset = DnsMessage.HeaderLength;
+        foreach (var label in labels)
         {
-            writer.Write((ushort)IPAddress.HostToNetworkOrder((short)transactionId));
-            writer.Write((ushort)IPAddress.HostToNetworkOrder((short)0x0100));
-            writer.Write((ushort)IPAddress.HostToNetworkOrder((short)1));
-            writer.Write((ushort)0);
-            writer.Write((ushort)0);
-            writer.Write((ushort)0);
-
-            var labels = domainName.Split('.');
-            foreach (var label in labels)
-            {
-                var length = (byte)label.Length;
-                writer.Write(length);
-                writer.Write(Encoding.ASCII.GetBytes(label));
-            }
-            writer.Write((byte)0);
-            writer.Write((ushort)IPAddress.HostToNetworkOrder((short)1));
-            writer.Write((ushort)IPAddress.HostToNetworkOrder((short)1));
+            query[offset++] = (byte)label.Length;
+            offset += Encoding.ASCII.GetBytes(label, query.AsSpan(offset));
         }
 
-        return dnsQuery.ToArray();
+        query[offset++] = 0;
+        query[offset + 1] = 1; // QTYPE=A
+        query[offset + 3] = 1; // QCLASS=IN
+        return query;
     }
 
-    public static Memory<byte> FromBase64Url(string base64Url)
+    public static bool TryDecodeBase64Url(string encoded, int maximumDecodedLength, out byte[] decoded)
     {
-        if(base64Url.Length == 0)
-            return Memory<byte>.Empty;
-        
-        var paddingNeeded = (4 - base64Url.Length % 4) % 4;
-        var totalLength = base64Url.Length + paddingNeeded;   
-        using var paddedSpanOwner = MemoryPool<char>.Shared.Rent(totalLength);
-        var paddedSpan = paddedSpanOwner.Memory[..totalLength].Span;
-        
-        base64Url.AsSpan().CopyTo(paddedSpan);
-        for (var i = 0; i < paddedSpan.Length; i++)
-        {
-            if (paddedSpan[i] == '-') 
-                paddedSpan[i] = '+';
-            else if (paddedSpan[i] == '_') 
-                paddedSpan[i] = '/';
-        }
-        for (var i = base64Url.Length; i < totalLength; i++)
-        {
-            paddedSpan[i] = '=';
-        }
-        
-        var expectedDecodedLength = base64Url.Length * 3 / 4;
-        using var decodedBufferOwner = MemoryPool<byte>.Shared.Rent(expectedDecodedLength);
-        var decodedBufferMemory = decodedBufferOwner.Memory[..expectedDecodedLength];
-        var decodedBuffer = decodedBufferMemory.Span;
+        decoded = [];
+        if (string.IsNullOrEmpty(encoded) || encoded.Length > ((maximumDecodedLength + 2) / 3 * 4))
+            return false;
 
-        if (Convert.TryFromBase64Chars(paddedSpan, decodedBuffer, out var _))
-            return decodedBufferMemory;
-        
-        return Memory<byte>.Empty;
-    }
-
-    public static async Task<Memory<byte>> ResolveDnsAsync(ReadOnlyMemory<byte> dnsRequest, IPEndPoint dnsServerEndpoint)
-    {
-        var udpClient = UdpClientPool.Rent();
-
+        var paddedLength = (encoded.Length + 3) & ~3;
+        var chars = ArrayPool<char>.Shared.Rent(paddedLength);
+        var decodedCapacity = Math.Min(maximumDecodedLength, paddedLength / 4 * 3);
+        var bytes = ArrayPool<byte>.Shared.Rent(Math.Max(decodedCapacity, 1));
         try
-        { 
-            udpClient.Client.ReceiveTimeout = 5000;
-            await udpClient.SendAsync(dnsRequest, dnsServerEndpoint);
-            var udpReceiveResult = await udpClient.ReceiveAsync();
-            return udpReceiveResult.Buffer.AsMemory();
-        }
-        catch (SocketException ex) when (ex.SocketErrorCode == SocketError.TimedOut)
         {
-            throw;
+            encoded.AsSpan().CopyTo(chars);
+            for (var i = 0; i < encoded.Length; i++)
+            {
+                chars[i] = chars[i] switch
+                {
+                    '-' => '+',
+                    '_' => '/',
+                    _ => chars[i]
+                };
+            }
+            chars.AsSpan(encoded.Length, paddedLength - encoded.Length).Fill('=');
+
+            if (!Convert.TryFromBase64Chars(chars.AsSpan(0, paddedLength), bytes, out var written) ||
+                written > maximumDecodedLength)
+                return false;
+
+            decoded = bytes.AsSpan(0, written).ToArray();
+            return true;
         }
         finally
         {
-            UdpClientPool.Return(udpClient);
+            ArrayPool<char>.Shared.Return(chars);
+            ArrayPool<byte>.Shared.Return(bytes);
         }
     }
-
 }

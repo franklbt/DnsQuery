@@ -1,13 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
     <PropertyGroup>
-        <TargetFramework>net9.0</TargetFramework>
+        <TargetFramework>net10.0</TargetFramework>
         <Nullable>enable</Nullable>
-        <RuntimeIdentifier>linux-arm64</RuntimeIdentifier>
         <PublishSingleFile>true</PublishSingleFile>
-        <SelfContained>true</SelfContained>
+        <SelfContained Condition="'$(RuntimeIdentifier)' != ''">true</SelfContained>
         <PublishTrimmed>false</PublishTrimmed>
-        <ImplicitUsings>enable</ImplicitUsings> 
+        <ImplicitUsings>enable</ImplicitUsings>
+        <InvariantGlobalization>true</InvariantGlobalization>
+        <ServerGarbageCollection>false</ServerGarbageCollection>
     </PropertyGroup>
 
 </Project>

@@ -1,91 +1,120 @@
-﻿using System.Net;
-using Microsoft.AspNetCore.Mvc;
-using static DnsQuery.Helpers;
+using System.Buffers;
+using Microsoft.Net.Http.Headers;
 
 namespace DnsQuery;
 
-public class DnsOverHttpsServer
+public static class DnsOverHttpsServer
 {
-    private readonly WebApplication _app;
-    public readonly IConfiguration Configuration;
-    public readonly IPEndPoint BaseDnsServer;
-    public ILogger Logger { get; }
-
-    public DnsOverHttpsServer()
+    public static IEndpointRouteBuilder MapDnsOverHttps(this IEndpointRouteBuilder endpoints)
     {
-        var builder = WebApplication.CreateBuilder([]);
-        builder.WebHost.UseKestrel(o => o.Listen(IPAddress.IPv6Any, 443, l =>
-            l.UseHttps(
-                builder.Configuration.GetValue<string>("CertificatePath")!,
-                builder.Configuration.GetValue<string>("CertificatePassword"))));
-        builder.Services.AddLogging();
-
-        _app = builder.Build();
-        Configuration = _app.Configuration;
-        BaseDnsServer = new IPEndPoint(IPAddress.Parse(
-            _app.Configuration.GetValue<string>("BaseDnsServer")!), 53);
-        Logger = _app.Logger;
-
-        _app.MapMethods("/dns-query", new[] { "GET", "POST" },
-            async (HttpContext context, ILogger<DnsOverHttpsServer> logger) =>
-            {
-                Memory<byte> dnsRequest;
-
-                if (HttpMethods.IsGet(context.Request.Method))
-                {
-                    if (!context.Request.Query.TryGetValue("dns", out var dnsParam))
-                        return Results.BadRequest("Paramètre 'dns' manquant.");
-
-                    try
-                    {
-                        dnsRequest = FromBase64Url(dnsParam[0]!);
-                        if (dnsRequest.Length == 0)
-                            return Results.BadRequest("Paramètre 'dns' vide.");
-                    }
-                    catch (FormatException)
-                    {
-                        return Results.BadRequest("Paramètre 'dns' invalide.");
-                    }
-                }
-                else if (HttpMethods.IsPost(context.Request.Method))
-                {
-                    if (context.Request.ContentType is { } contentType
-                        && !contentType.Equals("application/dns-message", StringComparison.OrdinalIgnoreCase))
-                        return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
-
-                    var length = context.Request.Headers.ContentLength;
-                    if (length is null or 0)
-                        return Results.BadRequest("Corps de la requête vide.");
-
-                    using var ms = new MemoryStream((int)length);
-                    await context.Request.Body.CopyToAsync(ms);
-                    dnsRequest = ms.GetBuffer().AsMemory(0, (int)ms.Length);
-                }
-                else
-                {
-                    return Results.StatusCode(StatusCodes.Status405MethodNotAllowed);
-                }
-
-                Memory<byte> dnsResponse;
-
-                try
-                {
-                    dnsResponse = await ResolveDnsAsync(dnsRequest, BaseDnsServer);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Erreur lors de la résolution DNS.");
-                    return Results.StatusCode(StatusCodes.Status502BadGateway);
-                }
-
-                return Results.Bytes(dnsResponse, "application/dns-message");
-            });
-
-        if (_app.Environment.EnvironmentName != Environments.Development)
-            return;
-
-        _app.MapGet("/dns-query-body", void ([FromQuery] string domain) => Results.File(CreateDnsQuery(domain)));
+        endpoints.MapGet("/dns-query", ResolveGetAsync);
+        endpoints.MapPost("/dns-query", ResolvePostAsync);
+        return endpoints;
     }
 
-    public async Task StartAsync() => await _app.RunAsync();
+    private static async Task<IResult> ResolveGetAsync(
+        HttpContext context,
+        IDnsResolver resolver,
+        DnsProxyOptions options,
+        ILoggerFactory loggerFactory)
+    {
+        if (!context.Request.Query.TryGetValue("dns", out var values) || values.Count != 1)
+            return Results.BadRequest("Exactly one 'dns' query parameter is required.");
+
+        if (!Helpers.TryDecodeBase64Url(values[0]!, options.MaxDnsMessageSize, out var request) ||
+            !DnsMessage.IsQuery(request))
+            return Results.BadRequest("The 'dns' query parameter is not a valid DNS message.");
+
+        return await ResolveAsync(context, resolver, request, loggerFactory.CreateLogger("DoH"));
+    }
+
+    private static async Task<IResult> ResolvePostAsync(
+        HttpContext context,
+        IDnsResolver resolver,
+        DnsProxyOptions options,
+        ILoggerFactory loggerFactory)
+    {
+        if (!MediaTypeHeaderValue.TryParse(context.Request.ContentType, out var contentType) ||
+            !contentType.MediaType.Equals("application/dns-message", StringComparison.OrdinalIgnoreCase))
+            return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
+
+        byte[] request;
+        try
+        {
+            request = await ReadRequestBodyAsync(
+                context.Request,
+                options.MaxDnsMessageSize,
+                context.RequestAborted);
+        }
+        catch (InvalidDataException)
+        {
+            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+        }
+
+        if (!DnsMessage.IsQuery(request))
+            return Results.BadRequest("The body is not a valid DNS query.");
+
+        return await ResolveAsync(context, resolver, request, loggerFactory.CreateLogger("DoH"));
+    }
+
+    private static async Task<IResult> ResolveAsync(
+        HttpContext context,
+        IDnsResolver resolver,
+        byte[] request,
+        ILogger logger)
+    {
+        try
+        {
+            var response = await resolver.ResolveAsync(request, context.RequestAborted);
+            context.Response.Headers.CacheControl = "no-store";
+            return Results.Bytes(response, "application/dns-message");
+        }
+        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+        {
+            return Results.Empty;
+        }
+        catch (Exception ex) when (ex is TimeoutException or IOException)
+        {
+            logger.LogWarning(ex, "The upstream DNS query failed.");
+            return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "The DNS-over-HTTPS query failed.");
+            return Results.StatusCode(StatusCodes.Status502BadGateway);
+        }
+    }
+
+    internal static async ValueTask<byte[]> ReadRequestBodyAsync(
+        HttpRequest request,
+        int maximumLength,
+        CancellationToken cancellationToken)
+    {
+        if (request.ContentLength > maximumLength)
+            throw new InvalidDataException("DNS request body is too large.");
+
+        var rented = ArrayPool<byte>.Shared.Rent(maximumLength + 1);
+        try
+        {
+            var length = 0;
+            while (length <= maximumLength)
+            {
+                var read = await request.Body.ReadAsync(
+                    rented.AsMemory(length, maximumLength + 1 - length),
+                    cancellationToken);
+                if (read == 0)
+                    break;
+                length += read;
+            }
+
+            if (length > maximumLength)
+                throw new InvalidDataException("DNS request body is too large.");
+
+            return rented.AsSpan(0, length).ToArray();
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rented);
+        }
+    }
 }
